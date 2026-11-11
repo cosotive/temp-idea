@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>兰顿的蚂蚁 - 性能基准测试</title>
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #1a1a1a; color: #eee; display: flex; flex-direction: column; align-items: center; padding: 20px; }
+        .container { background: #2d2d2d; padding: 20px; border-radius: 15px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); text-align: center; max-width: 850px; }
+        canvas { background: white; border: 1px solid #444; margin: 20px 0; image-rendering: pixelated; width: 600px; height: 400px; }
+        .stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; margin-bottom: 20px; }
+        .stat-card { background: #3d3d3d; padding: 15px; border-radius: 8px; }
+        .stat-val { display: block; font-size: 1.5em; font-weight: bold; color: #007AFF; }
+        button { padding: 12px 30px; font-size: 1.1em; cursor: pointer; border: none; border-radius: 6px; background: #28a745; color: white; transition: 0.3s; }
+        button:disabled { background: #555; cursor: wait; }
+        .progress-container { width: 100%; background: #444; height: 10px; border-radius: 5px; margin: 10px 0; overflow: hidden; }
+        #progressBar { width: 0%; height: 100%; background: #007AFF; transition: width 0.1s; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h1>🐜 兰顿的蚂蚁性能基准测试</h1>
+    <p>该工具将在 16 秒内全速运行模拟，测试浏览器的 JS 执行与 Canvas 渲染极限。</p>
+
+    <div class="stats">
+        <div class="stat-card">
+            <span class="stat-label">剩余时间</span>
+            <span id="timeVal" class="stat-val">16s</span>
+        </div>
+        <div class="stat-card">
+            <span class="stat-label">总步数</span>
+            <span id="stepsVal" class="stat-val">0</span>
+        </div>
+        <div class="stat-card" style="border: 2px solid #007AFF;">
+            <span class="stat-label">平均步长 (Steps/sec)</span>
+            <span id="avgVal" class="stat-val">0</span>
+        </div>
+    </div>
+
+    <div class="progress-container">
+        <div id="progressBar"></div>
+    </div>
+
+    <canvas id="antCanvas" width="600" height="400"></canvas>
+
+    <div>
+        <button id="runBtn">开始 16 秒压力测试</button>
+    </div>
+</div>
+
+<script>
+    const canvas = document.getElementById('antCanvas');
+    const ctx = canvas.getContext('2d', { alpha: false }); // 优化性能：禁用透明度
+    const runBtn = document.getElementById('runBtn');
+    
+    let grid, ant, steps, startTime;
+    const TEST_DURATION = 16000; // 16 秒
+    const cellSize = 2; // 减小尺寸以增加渲染压力
+    const cols = canvas.width / cellSize;
+    const rows = canvas.height / cellSize;
+
+    function init() {
+        grid = new Uint8Array(cols * rows); // 使用类型化数组优化内存
+        ant = { x: Math.floor(cols / 2), y: Math.floor(rows / 2), dir: 0 };
+        steps = 0;
+        ctx.fillStyle = 'white';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+    }
+
+    function runBenchmark() {
+        init();
+        runBtn.disabled = true;
+        startTime = performance.now();
+        
+        function update() {
+            const now = performance.now();
+            const elapsed = now - startTime;
+            
+            if (elapsed < TEST_DURATION) {
+                // 批处理：每帧执行 50,000 步计算，防止阻塞 UI 渲染进度条
+                const batchSize = 50000; 
+                for (let i = 0; i < batchSize; i++) {
+                    const idx = ant.x * rows + ant.y;
+                    const state = grid[idx];
+
+                    if (state === 0) {
+                        ant.dir = (ant.dir + 1) & 3;
+                        grid[idx] = 1;
+                        ctx.fillStyle = 'black';
+                    } else {
+                        ant.dir = (ant.dir + 3) & 3;
+                        grid[idx] = 0;
+                        ctx.fillStyle = 'white';
+                    }
+                    ctx.fillRect(ant.x * cellSize, ant.y * cellSize, cellSize, cellSize);
+
+                    if (ant.dir === 0) ant.y--;
+                    else if (ant.dir === 1) ant.x++;
+                    else if (ant.dir === 2) ant.y++;
+                    else if (ant.dir === 3) ant.x--;
+
+                    ant.x = (ant.x + cols) % cols;
+                    ant.y = (ant.y + rows) % rows;
+                    steps++;
+                }
+
+                // 更新 UI
+                const remaining = Math.max(0, (TEST_DURATION - elapsed) / 1000);
+                document.getElementById('timeVal').innerText = remaining.toFixed(1) + 's';
+                document.getElementById('stepsVal').innerText = steps.toLocaleString();
+                document.getElementById('avgVal').innerText = Math.round(steps / (elapsed / 1000)).toLocaleString();
+                document.getElementById('progressBar').style.width = (elapsed / TEST_DURATION * 100) + '%';
+
+                // 继续下一批
+                setTimeout(update, 0); 
+            } else {
+                finish();
+            }
+        }
+        update();
+    }
+
+    function finish() {
+        runBtn.disabled = false;
+        document.getElementById('timeVal').innerText = '0.0s';
+        const finalAvg = Math.round(steps / 16);
+        document.getElementById('avgVal').innerText = finalAvg.toLocaleString();
+        document.getElementById('progressBar').style.width = '100%';
+        alert('测试完成！您的得分 (Steps/sec): ' + finalAvg.toLocaleString());
+    }
+
+    runBtn.onclick = runBenchmark;
+    init();
+</script>
+
+</body>
+</html>
